@@ -1,10 +1,7 @@
 package net.sorenon.mcxr.play.rendering;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Matrix3f;
 import com.mojang.math.Matrix4f;
 import com.mojang.math.Quaternion;
@@ -26,6 +23,7 @@ import net.minecraft.client.renderer.block.model.ItemTransforms;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.player.Player;
@@ -36,9 +34,6 @@ import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import net.sorenon.fart.FartUtil;
-import net.sorenon.fart.RenderStateShards;
-import net.sorenon.fart.RenderTypeBuilder;
 import net.sorenon.mcxr.core.JOMLUtil;
 import net.sorenon.mcxr.core.MCXRCore;
 import net.sorenon.mcxr.core.Pose;
@@ -55,11 +50,14 @@ import org.lwjgl.opengl.GL11;
 
 import net.tr7zw.MapRenderer;
 
+import java.util.OptionalDouble;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 import static net.minecraft.client.gui.GuiComponent.GUI_ICONS_LOCATION;
 import static net.minecraft.client.renderer.block.model.ItemTransforms.TransformType.THIRD_PERSON_LEFT_HAND;
+import static net.minecraft.world.item.UseAnim.BLOCK;
 import static net.sorenon.mcxr.core.JOMLUtil.convert;
 
 //TODO third person renderer
@@ -71,6 +69,8 @@ public class VrFirstPersonRenderer {
 
     private final ModelPart[] slimArmModel = new ModelPart[2];
     private final ModelPart[] armModel = new ModelPart[2];
+
+    private final MultiBufferSource.BufferSource customBufferSource = MultiBufferSource.immediate(new BufferBuilder(1000));
 
     //private Item filledMap = Registry.ITEM.get(new ResourceLocation("minecraft", "filled_map"));
 
@@ -113,10 +113,9 @@ public class VrFirstPersonRenderer {
     public void renderLast(WorldRenderContext context) {
         Camera camera = context.camera();
         Entity camEntity = camera.getEntity();
-        MultiBufferSource.BufferSource consumers = (MultiBufferSource.BufferSource) context.consumers();
+        MultiBufferSource.BufferSource consumers = customBufferSource;
         PoseStack matrices = context.matrixStack();
         ClientLevel world = context.world();
-        assert consumers != null;
 
         //Render gui
         if (FGM.position != null) {
@@ -152,7 +151,7 @@ public class VrFirstPersonRenderer {
                 consumer.vertex(model, 0, 0, 0).color(0f, 0f, 0f, 1f).normal(normal, 0, -1, 0).endVertex();
                 consumer.vertex(model, 0, -5, 0).color(0f, 0f, 0f, 1f).normal(normal, 0, -1, 0).endVertex();
 
-                consumer = consumers.getBuffer(LINE_CUSTOM.apply(2.0));
+                consumer = consumers.getBuffer(LINE_CUSTOM.apply(2.0, true));
                 consumer.vertex(model, 0, 0, 0).color(1f, 0f, 0f, 1f).normal(normal, 0, -1, 0).endVertex();
                 consumer.vertex(model, 0, -5, 0).color(0.7f, 0.7f, 0.7f, 1f).normal(normal, 0, -1, 0).endVertex();
 
@@ -178,14 +177,14 @@ public class VrFirstPersonRenderer {
 
                 matrices.scale(0.5f, 1, 0.5f);
                 RenderType SHADOW_LAYER = RenderType.entityCutoutNoCull(GUI_ICONS_LOCATION);
-                VertexConsumer vertexConsumer = context.consumers().getBuffer(SHADOW_LAYER);
+                VertexConsumer vertexConsumer = consumers.getBuffer(SHADOW_LAYER);
 
                 PoseStack.Pose entry = matrices.last();
 
-                vertexConsumer.vertex(entry.pose(), -0.5f + (0.5f / 16f), 0.005f, -0.5f + (0.5f / 16f)).color(1.0F, 1.0F, 1.0F, 1.0f).uv(0, 0).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(15728880).normal(0.0F, 0.0F, 1.0F).endVertex();
-                vertexConsumer.vertex(entry.pose(), -0.5f + (0.5f / 16f), 0.005f, 0.5f + (0.5f / 16f)).color(1.0F, 1.0F, 1.0F, 1.0f).uv(0, 0.0625f).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(15728880).normal(0.0F, 0.0F, 1.0F).endVertex();
-                vertexConsumer.vertex(entry.pose(), 0.5f + (0.5f / 16f), 0.005f, 0.5f + (0.5f / 16f)).color(1.0F, 1.0F, 1.0F, 1.0f).uv(0.0625f, 0.0625f).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(15728880).normal(0.0F, 0.0F, 1.0F).endVertex();
-                vertexConsumer.vertex(entry.pose(), 0.5f + (0.5f / 16f), 0.005f, -0.5f + (0.5f / 16f)).color(1.0F, 1.0F, 1.0F, 1.0f).uv(0.0625f, 0).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(15728880).normal(0.0F, 0.0F, 1.0F).endVertex();
+                vertexConsumer.vertex(entry.pose(), -0.3f + (0.5f / 16f), 0.005f, -0.3f + (0.5f / 16f)).color(1.0F, 1.0F, 1.0F, 1.0f).uv(0, 0).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(15728880).normal(0.0F, 0.0F, 1.0F).endVertex();
+                vertexConsumer.vertex(entry.pose(), -0.3f + (0.5f / 16f), 0.005f, 0.3f + (0.5f / 16f)).color(1.0F, 1.0F, 1.0F, 1.0f).uv(0, 0.0625f).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(15728880).normal(0.0F, 0.0F, 1.0F).endVertex();
+                vertexConsumer.vertex(entry.pose(), 0.3f + (0.5f / 16f), 0.005f, 0.3f + (0.5f / 16f)).color(1.0F, 1.0F, 1.0F, 1.0f).uv(0.0625f, 0.0625f).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(15728880).normal(0.0F, 0.0F, 1.0F).endVertex();
+                vertexConsumer.vertex(entry.pose(), 0.3f + (0.5f / 16f), 0.005f, -0.3f + (0.5f / 16f)).color(1.0F, 1.0F, 1.0F, 1.0f).uv(0.0625f, 0).overlayCoords(OverlayTexture.NO_OVERLAY).uv2(15728880).normal(0.0F, 0.0F, 1.0F).endVertex();
 
                 matrices.popPose();
             }
@@ -239,7 +238,7 @@ public class VrFirstPersonRenderer {
                     finalPos = stage2.getA();
                     blocked = !stage2.getB();
 
-                    VertexConsumer consumer = consumers.getBuffer(LINE_CUSTOM.apply(2.0));
+                    VertexConsumer consumer = consumers.getBuffer(LINE_CUSTOM.apply(2.0, true));
                     if (blocked) {
                         consumer.vertex(model, (float) hitPos1.x, (float) hitPos1.y, (float) hitPos1.z).color(0.7f, 0.1f, 0.1f, 1).normal(normal, 0, -1, 0).endVertex();
                         consumer.vertex(model, (float) hitPos1.x, (float) finalPos.y, (float) hitPos1.z).color(0.7f, 0.1f, 0.1f, 1).normal(normal, 0, -1, 0).endVertex();
@@ -307,7 +306,7 @@ public class VrFirstPersonRenderer {
                     consumer.vertex(model, 0, 0, 0).color(0f, 0f, 0f, 1f).normal(normal, 0, -1, 0).endVertex();
                     consumer.vertex(model, 0, -5, 0).color(0f, 0f, 0f, 1f).normal(normal, 0, -1, 0).endVertex();
 
-                    consumer = consumers.getBuffer(LINE_CUSTOM.apply(2.0));
+                    consumer = consumers.getBuffer(LINE_CUSTOM.apply(2.0, false));
                     consumer.vertex(model, 0, 0, 0).color(1f, 0f, 0f, 1f).normal(normal, 0, -1, 0).endVertex();
                     consumer.vertex(model, 0, -5, 0).color(0.7f, 0.7f, 0.7f, 1f).normal(normal, 0, -1, 0).endVertex();
                 }
@@ -316,7 +315,7 @@ public class VrFirstPersonRenderer {
                     consumer.vertex(model, 0, 0, 0).color(0.1f, 0.1f, 0.1f, 1f).normal(normal, 0, -1, 0).endVertex();
                     consumer.vertex(model, 0, -0.5f, 0).color(0.1f, 0.1f, 0.1f, 1f).normal(normal, 0, -1, 0).endVertex();
 
-                    consumer = consumers.getBuffer(LINE_CUSTOM.apply(4.0));
+                    consumer = consumers.getBuffer(LINE_CUSTOM.apply(4.0, false));
                     consumer.vertex(model, 0, 0, 0).color(1f, 1f, 1f, 1f).normal(normal, 0, -1, 0).endVertex();
                     consumer.vertex(model, 0, -1, 0).color(1f, 1f, 1f, 1f).normal(normal, 0, -1, 0).endVertex();
                 }
@@ -324,7 +323,7 @@ public class VrFirstPersonRenderer {
 
 
             if (debug) {
-                FartUtil.renderCrosshair(consumers, context.matrixStack(), 0.05f, false);
+                renderCrosshair(consumers, context.matrixStack(), 0.05f, false);
             }
 
             matrices.popPose(); //2
@@ -335,7 +334,7 @@ public class VrFirstPersonRenderer {
                                 pose.getOrientation()
                         )
                 );
-                FartUtil.renderCrosshair(consumers, context.matrixStack(), 0.1f, false);
+                renderCrosshair(consumers, context.matrixStack(), 0.1f, false);
             }
 
             matrices.popPose(); //1
@@ -419,6 +418,11 @@ public class VrFirstPersonRenderer {
 
         matrices.translate(0, 1 / 16f, -1.5f / 16f);
         matrices.mulPose(com.mojang.math.Vector3f.XP.rotationDegrees(PlayOptions.handPitchAdjust));
+
+        if (hand == MCXRPlayClient.getMainHand()) {
+            float swing = -0.1f * Mth.sin((float) (Math.sqrt(Minecraft.getInstance().player.getAttackAnim(tickDelta)) * Math.PI * 2));
+            matrices.translate(0,0, swing);
+        }
     }
 
     public void renderShadow(WorldRenderContext context, Entity camEntity) {
@@ -495,7 +499,7 @@ public class VrFirstPersonRenderer {
                     transformToHand(matrices, handIndex, deltaTick);
 
                     if (handIndex == MCXRPlayClient.getMainHand()) {
-                        float swing = -0.4f * Mth.sin((float) (Math.sqrt(player.getAttackAnim(deltaTick)) * Math.PI * 2));
+                        float swing = -0.6f * Mth.sin((float) (Math.sqrt(player.getAttackAnim(deltaTick)) * Math.PI * 2));
                         matrices.mulPose(com.mojang.math.Vector3f.XP.rotation(swing));
                     }
 
@@ -522,6 +526,17 @@ public class VrFirstPersonRenderer {
                         MapRenderer.renderFirstPersonMap(matrices, consumers, light, stack, false, handIndex== 0);
                     }
                     else {
+                        matrices.scale(1.5f,1.5f,1.5f);
+                        if (stack.getUseAnimation() == BLOCK) {//hacky shield pose fix
+                            InteractionHand curHand= handIndex == 0 ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+                            if(player.getUsedItemHand()==curHand && player.getUseItemRemainingTicks() > 0) {
+                                matrices.translate((2*handIndex-1)*-0.2-0.0465,0.06*(1-handIndex), 0);
+                                matrices.mulPose(Quaternion.fromXYZ(0,0,Math.toRadians((2*handIndex-1)*-3)));
+                                matrices.mulPose(Quaternion.fromXYZ(0,Math.toRadians((2*handIndex-1)*45),0));
+                                matrices.mulPose(Quaternion.fromXYZ(Math.toRadians(-50),0,0));
+                            }
+                        }
+
                         Minecraft.getInstance().getEntityRenderDispatcher().getItemInHandRenderer().renderItem(
                                 player,
                                 stack,
@@ -565,15 +580,58 @@ public class VrFirstPersonRenderer {
         }
     }
 
+    public static void renderCrosshair(MultiBufferSource consumerProvider, PoseStack poseStack, float size, boolean depthTest) {
+        renderCrosshair(consumerProvider, poseStack, size, depthTest, true, true, true);
+    }
+
+    public static void renderCrosshair(MultiBufferSource consumerProvider, PoseStack poseStack, float size, boolean depthTest, boolean drawX, boolean drawY, boolean drawZ) {
+        Matrix4f model = poseStack.last().pose();
+        Matrix3f normal = poseStack.last().normal() ;
+
+        VertexConsumer consumer = consumerProvider.getBuffer(LINE_COLOR_ONLY.apply(4d, depthTest));
+        if (drawX) {
+            consumer.vertex(model, 0.0f, 0.0f, 0.0f).color(0, 0, 0, 255).normal(normal, 1.0F, 0.0F, 0.0F).endVertex();
+            consumer.vertex(model, size, 0.0f, 0.0f).color(0, 0, 0, 255).normal(normal, 1.0F, 0.0F, 0.0F).endVertex();
+        }
+
+        if (drawY) {
+            consumer.vertex(model, 0.0f, 0.0f, 0.0f).color(0, 0, 0, 255).normal(normal, 0.0F, 1.0F, 0.0F).endVertex();
+            consumer.vertex(model, 0.0f, size, 0.0f).color(0, 0, 0, 255).normal(normal, 0.0F, 1.0F, 0.0F).endVertex();
+        }
+
+        if (drawZ) {
+            consumer.vertex(model, 0.0f, 0.0f, 0.0f).color(0, 0, 0, 255).normal(normal, 0.0F, 0.0F, 1.0F).endVertex();
+            consumer.vertex(model, 0.0f, 0.0f, size).color(0, 0, 0, 255).normal(normal, 0.0F, 0.0F, 1.0F).endVertex();
+        }
+
+        consumer = consumerProvider.getBuffer(LINE_CUSTOM.apply(2d, depthTest));
+
+        if (drawX) {
+            consumer.vertex(model, 0.0f, 0.0f, 0.0f).color(255, 0, 0, 255).normal(normal, 1.0F, 0.0F, 0.0F).endVertex();
+            consumer.vertex(model, size, 0.0f, 0.0f).color(255, 0, 0, 255).normal(normal, 1.0F, 0.0F, 0.0F).endVertex();
+        }
+
+        if (drawY) {
+            consumer.vertex(model, 0.0f, 0.0f, 0.0f).color(0, 255, 0, 255).normal(normal, 0.0F, 1.0F, 0.0F).endVertex();
+            consumer.vertex(model, 0.0f, size, 0.0f).color(0, 255, 0, 255).normal(normal, 0.0F, 1.0F, 0.0F).endVertex();
+        }
+
+        if (drawZ) {
+            consumer.vertex(model, 0.0f, 0.0f, 0.0f).color(127, 127, 255, 255).normal(normal, 0.0F, 0.0F, 1.0F).endVertex();
+            consumer.vertex(model, 0.0f, 0.0f, size).color(127, 127, 255, 255).normal(normal, 0.0F, 0.0F, 1.0F).endVertex();
+        }
+    }
+
+
     public static final Function<ResourceLocation, RenderType> DEPTH_ONLY = Util.memoize((texture) -> {
         RenderTypeBuilder renderTypeBuilder = new RenderTypeBuilder(MCXRPlayClient.id("depth_only"), DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS, 256, false, false);
         renderTypeBuilder.innerBuilder
-                .setWriteMaskState(RenderStateShards.DEPTH_WRITE)
-                .setShaderState(RenderStateShards.shader(GameRenderer::getRendertypeEntityCutoutShader))
-                .setTextureState(RenderStateShards.texture(texture, false, false))
-                .setTransparencyState(RenderStateShards.NO_TRANSPARENCY)
-                .setLightmapState(RenderStateShards.LIGHTMAP)
-                .setOverlayState(RenderStateShards.OVERLAY);
+                .setWriteMaskState(RenderStateShard.DEPTH_WRITE)
+                .setShaderState(new RenderStateShard.ShaderStateShard(GameRenderer::getRendertypeEntityCutoutShader))
+                .setTextureState(new RenderStateShard.TextureStateShard(texture, false, false))
+                .setTransparencyState(RenderStateShard.NO_TRANSPARENCY)
+                .setLightmapState(RenderStateShard.LIGHTMAP)
+                .setOverlayState(RenderStateShard.OVERLAY);
         return renderTypeBuilder.build(true);
     });
 
@@ -585,51 +643,75 @@ public class VrFirstPersonRenderer {
 
         RenderTypeBuilder renderTypeBuilder = new RenderTypeBuilder(MCXRPlayClient.id("gui_no_depth_test"), DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS, 256, false, false);
         renderTypeBuilder.innerBuilder.
-                setShaderState(RenderStateShards.shader(shader))
-                .setTextureState(RenderStateShards.texture(texture, false, false))
-                .setTransparencyState(RenderStateShards.TRANSLUCENT_TRANSPARENCY)
-                .setCullState(RenderStateShards.NO_CULL)
-                .setLightmapState(RenderStateShards.LIGHTMAP)
-                .setOverlayState(RenderStateShards.OVERLAY)
-                .setDepthTestState(RenderStateShards.NO_DEPTH_TEST);
+                setShaderState(new RenderStateShard.ShaderStateShard(shader))
+                .setTextureState(new RenderStateShard.TextureStateShard(texture, false, false))
+                .setTransparencyState(RenderStateShard.TRANSLUCENT_TRANSPARENCY)
+                .setCullState(RenderStateShard.NO_CULL)
+                .setLightmapState(RenderStateShard.LIGHTMAP)
+                .setOverlayState(RenderStateShard.OVERLAY)
+                .setDepthTestState(RenderStateShard.NO_DEPTH_TEST);
         return renderTypeBuilder.build(true);
     });
 
     public static final Function<ResourceLocation, RenderType> GUI_SHADOW = Util.memoize((texture) -> {
         RenderTypeBuilder renderTypeBuilder = new RenderTypeBuilder(MCXRPlayClient.id("gui_no_depth_test"), DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS, 256, false, false);
         renderTypeBuilder.innerBuilder.
-                setShaderState(RenderStateShards.shader(GameRenderer::getRendertypeEntityTranslucentShader))
-                .setTextureState(RenderStateShards.texture(texture, false, false))
-                .setTransparencyState(RenderStateShards.TRANSLUCENT_TRANSPARENCY)
-                .setCullState(RenderStateShards.NO_CULL)
-                .setLightmapState(RenderStateShards.LIGHTMAP)
-                .setOverlayState(RenderStateShards.OVERLAY)
-                .setDepthTestState(RenderStateShards.depthTest("GL_GREATER", GL11.GL_GREATER));
+                setShaderState(new RenderStateShard.ShaderStateShard(GameRenderer::getRendertypeEntityTranslucentShader))
+                .setTextureState(new RenderStateShard.TextureStateShard(texture, false, false))
+                .setTransparencyState(RenderStateShard.TRANSLUCENT_TRANSPARENCY)
+                .setCullState(RenderStateShard.NO_CULL)
+                .setLightmapState(RenderStateShard.LIGHTMAP)
+                .setOverlayState(RenderStateShard.OVERLAY)
+                .setDepthTestState(new RenderStateShard.DepthTestStateShard("GL_GREATER", GL11.GL_GREATER));
         return renderTypeBuilder.build(true);
     });
 
     public static final Function<Double, RenderType> LINE_CUSTOM_ALWAYS = Util.memoize(aDouble -> {
         RenderTypeBuilder builder = new RenderTypeBuilder(MCXRPlayClient.id("line_always"), DefaultVertexFormat.POSITION_COLOR_NORMAL, VertexFormat.Mode.LINES, 16, false, false);
         builder.innerBuilder
-                .setShaderState(RenderStateShards.shader(GameRenderer::getRendertypeLinesShader))
-                .setLineState(RenderStateShards.lineWidth(aDouble))
-                .setLayeringState(RenderStateShards.VIEW_OFFSET_Z_LAYERING)
-                .setTransparencyState(RenderStateShards.TRANSLUCENT_TRANSPARENCY)
-                .setWriteMaskState(RenderStateShards.COLOR_DEPTH_WRITE)
-                .setCullState(RenderStateShards.NO_CULL)
-                .setDepthTestState(RenderStateShards.NO_DEPTH_TEST);
+                .setShaderState(new RenderStateShard.ShaderStateShard(GameRenderer::getRendertypeLinesShader))
+                .setLineState(new RenderStateShard.LineStateShard(OptionalDouble.of(aDouble)))
+                .setLayeringState(RenderStateShard.VIEW_OFFSET_Z_LAYERING)
+                .setTransparencyState(RenderStateShard.TRANSLUCENT_TRANSPARENCY)
+                .setWriteMaskState(RenderStateShard.COLOR_DEPTH_WRITE)
+                .setCullState(RenderStateShard.NO_CULL)
+                .setDepthTestState(RenderStateShard.NO_DEPTH_TEST);
         return builder.build(true);
     });
 
-    public static final Function<Double, RenderType> LINE_CUSTOM = Util.memoize(aDouble -> {
+    public static final BiFunction<Double, Boolean, RenderType> LINE_CUSTOM = Util.memoize((aDouble, depthTest) -> {
+        var depthTest1 = RenderStateShard.NO_DEPTH_TEST;
+        if (depthTest) {
+            depthTest1 = RenderStateShard.LEQUAL_DEPTH_TEST;
+        }
+
         RenderTypeBuilder builder = new RenderTypeBuilder(MCXRPlayClient.id("line"), DefaultVertexFormat.POSITION_COLOR_NORMAL, VertexFormat.Mode.LINES, 16, false, false);
         builder.innerBuilder
-                .setShaderState(RenderStateShards.shader(GameRenderer::getRendertypeLinesShader))
-                .setLineState(RenderStateShards.lineWidth(aDouble))
-                .setLayeringState(RenderStateShards.VIEW_OFFSET_Z_LAYERING)
-                .setTransparencyState(RenderStateShards.TRANSLUCENT_TRANSPARENCY)
-                .setWriteMaskState(RenderStateShards.COLOR_DEPTH_WRITE)
-                .setCullState(RenderStateShards.NO_CULL);
+                .setShaderState(new RenderStateShard.ShaderStateShard(GameRenderer::getRendertypeLinesShader))
+                .setLineState(new RenderStateShard.LineStateShard(OptionalDouble.of(aDouble)))
+                .setLayeringState(RenderStateShard.VIEW_OFFSET_Z_LAYERING)
+                .setTransparencyState(RenderStateShard.TRANSLUCENT_TRANSPARENCY)
+                .setWriteMaskState(RenderStateShard.COLOR_DEPTH_WRITE)
+                .setCullState(RenderStateShard.NO_CULL)
+                .setDepthTestState(depthTest1);
+        return builder.build(true);
+    });
+
+    public static final BiFunction<Double, Boolean, RenderType> LINE_COLOR_ONLY = Util.memoize((lineWidth, depthTest) -> {
+        var depthTest1 = RenderStateShard.NO_DEPTH_TEST;
+        if (depthTest) {
+            depthTest1 = RenderStateShard.LEQUAL_DEPTH_TEST;
+        }
+
+        RenderTypeBuilder builder = new RenderTypeBuilder(MCXRPlayClient.id("line_color_only"), DefaultVertexFormat.POSITION_COLOR_NORMAL, VertexFormat.Mode.LINES, 16, false, false);
+        builder.innerBuilder
+                .setShaderState(new RenderStateShard.ShaderStateShard(GameRenderer::getRendertypeLinesShader))
+                .setLineState(new RenderStateShard.LineStateShard(OptionalDouble.of(lineWidth)))
+                .setLayeringState(RenderStateShard.VIEW_OFFSET_Z_LAYERING)
+                .setTransparencyState(RenderStateShard.TRANSLUCENT_TRANSPARENCY)
+                .setWriteMaskState(RenderStateShard.COLOR_WRITE)
+                .setCullState(RenderStateShard.NO_CULL)
+                .setDepthTestState(depthTest1);
         return builder.build(true);
     });
 }
